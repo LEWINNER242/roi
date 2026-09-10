@@ -1,1 +1,167 @@
 
+name: Build TRIKA.TRAD APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # ==========================================
+      # 1. Récupérer les fichiers du dépôt
+      # ==========================================
+      - name: Récupérer le projet
+        uses: actions/checkout@v5
+
+      # ==========================================
+      # 2. Installer Java 17
+      # ==========================================
+      - name: Installer Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ==========================================
+      # 3. Installer Python 3.11
+      # ==========================================
+      - name: Installer Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # ==========================================
+      # 4. Installer les dépendances système
+      # ==========================================
+      - name: Installer les dépendances
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            zip \
+            unzip \
+            git \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            zlib1g-dev \
+            libffi-dev \
+            libssl-dev \
+            cmake \
+            openjdk-17-jdk
+
+          python -m pip install --upgrade pip
+
+          pip install buildozer==1.5.0
+          pip install Cython==0.29.36
+
+      # ==========================================
+      # 5. Préparer main.py
+      # ==========================================
+      - name: Préparer main.py
+        run: |
+          cp "TRIKA.TRAD.py" "main.py"
+
+      # Vérification des fichiers importants
+      - name: Vérifier les fichiers
+        run: |
+          echo "========================================"
+          echo "      FICHIERS TRIKA.TRAD"
+          echo "========================================"
+
+          ls -lah
+
+          echo ""
+          echo "Vérification :"
+
+          test -f main.py && echo "OK : main.py" || (echo "ERREUR : main.py absent" && exit 1)
+
+          test -f buildozer.spec && echo "OK : buildozer.spec" || (echo "ERREUR : buildozer.spec absent" && exit 1)
+
+          test -f ICONE.png && echo "OK : ICONE.png" || echo "ATTENTION : ICONE.png absent"
+
+          test -f logo.png && echo "OK : logo.png" || echo "ATTENTION : logo.png absent"
+
+          test -f dictionnaire_trika_nouvelle.db && echo "OK : dictionnaire_trika_nouvelle.db" || echo "ATTENTION : dictionnaire_trika_nouvelle.db absent"
+
+          test -f gemini_ai.py && echo "OK : gemini_ai.py" || echo "ATTENTION : gemini_ai.py absent"
+
+      # ==========================================
+      # 6. Autoriser Buildozer à fonctionner
+      # ==========================================
+      - name: Configurer Buildozer
+        env:
+          BUILDOZER_ALLOW_ROOT: "1"
+        run: |
+          buildozer --version
+
+      # ==========================================
+      # 7. Installer/Accepter les licences Android
+      # ==========================================
+      - name: Accepter les licences Android
+        env:
+          ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+          ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
+        run: |
+          echo "========================================"
+          echo "     LICENCES ANDROID"
+          echo "========================================"
+
+          SDKMANAGER="/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ -f "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses || true
+
+            yes | "$SDKMANAGER" \
+              "platform-tools" \
+              "platforms;android-34" \
+              "build-tools;34.0.0" || true
+          else
+            echo "sdkmanager pas encore disponible."
+            echo "Buildozer téléchargera les outils Android nécessaires."
+          fi
+
+      # ==========================================
+      # 8. Compiler l'APK
+      # ==========================================
+      - name: Compiler APK
+        env:
+          BUILDOZER_ALLOW_ROOT: "1"
+          ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+          ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
+        run: |
+          echo "========================================"
+          echo "       COMPILATION TRIKA.TRAD"
+          echo "========================================"
+
+          buildozer android debug
+
+      # ==========================================
+      # 9. Vérifier l'APK
+      # ==========================================
+      - name: Vérifier l'APK
+        run: |
+          echo "========================================"
+          echo "          APK GÉNÉRÉE"
+          echo "========================================"
+
+          ls -lah bin/
+
+          test -n "$(find bin -name '*.apk' -print -quit)" || (
+            echo "ERREUR : aucune APK générée"
+            exit 1
+          )
+
+      # ==========================================
+      # 10. Télécharger l'APK
+      # ==========================================
+      - name: Télécharger APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRIKA_TRAD_APK
+          path: bin/*.apk
+          if-no-files-found: error
